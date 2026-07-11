@@ -86,6 +86,5 @@ def engineer_features(df):
     df=add_risk_category(df)
     df = add_is_fully_loaded(df)
     print_pivot_summary(df)
-
-
+    
     return df

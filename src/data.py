@@ -57,6 +57,11 @@ def encode_features(df):
 
     #For multi-category Feature Encoding
     df= pd.get_dummies(df, columns=multi_cols,drop_first=True, dtype=int)
+    
+    # Encode risk_category if it exists
+    if 'risk_category' in df.columns:
+       risk_map = {'Low Risk': 0, 'Medium Risk': 1, 'High Risk': 2}
+       df['risk_category'] = df['risk_category'].map(risk_map)
 
     return df
 
