@@ -7,6 +7,9 @@ from xgboost import XGBClassifier
 from src.data import load_data, fix_dtypes, encode_features, scale_features
 from src.features import engineer_features
 from src.split import split_data
+from src.tune import tune_xgboost
+import joblib
+import os
 
 def evaluate_model(model, X_test, y_test):
     """
@@ -59,7 +62,7 @@ def train_all():
     wandb.log(rf_metrics)
     wandb.finish()
     # Model 3 — XGBoost
-    xgb = XGBClassifier(n_estimators=45, random_state=42, eval_metric='logloss')
+    xgb = XGBClassifier(n_estimators=46, random_state=42, eval_metric='logloss')
     xgb.fit(X_train, y_train)
     print("XGBoost trained")
     xgb_metrics = evaluate_model(xgb, X_test, y_test)
@@ -67,6 +70,32 @@ def train_all():
     wandb.init(project='customer-churn', name='xgboost')
     wandb.log(xgb_metrics)
     wandb.finish()
+
+
+    # ← ADD HERE — after wandb.finish() for xgboost
+
+    # Tune XGBoost and save best model
+   
+
+    xgb_best_params = tune_xgboost(X_train, y_train, n_trials=50)
+
+    best_model = XGBClassifier(
+        **xgb_best_params,
+        random_state=42,
+        eval_metric='logloss'
+    )
+    best_model.fit(X_train, y_train)
+
+    tuned_metrics = evaluate_model(best_model, X_test, y_test)
+    print(f"\n=== Tuned XGBoost ===")
+    print(f"Accuracy: {tuned_metrics['accuracy']:.4f}")
+    print(f"F1:       {tuned_metrics['f1']:.4f}")
+    print(f"AUC-ROC:  {tuned_metrics['auc_roc']:.4f}")
+
+    os.makedirs('models', exist_ok=True)
+    joblib.dump(best_model, 'models/best_model.pkl')
+    print("\nBest model saved to models/best_model.pkl")
+
     return lr, rf, xgb, X_test, y_test
 
 
