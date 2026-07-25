@@ -4,6 +4,7 @@ import joblib
 import os
 import pandas as pd
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import create_engine, text
 
 model=joblib.load('models/best_model.pkl')
 app=FastAPI()
@@ -53,6 +54,44 @@ class PredictionOutput(BaseModel):
        risk_level: str
 
 
+def log_prediction(input_data: dict, churn_probability: float,
+                   churn_prediction: int, risk_level: str):
+    """Log prediction to PostgreSQL database."""
+    try:
+        db_url = os.getenv('DATABASE_URL')
+        if not db_url:
+            return
+        
+        engine = create_engine(db_url)
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS predictions (
+                    id SERIAL PRIMARY KEY,
+                    tenure_months INTEGER,
+                    monthly_charges FLOAT,
+                    contract VARCHAR(50),
+                    churn_probability FLOAT,
+                    churn_prediction INTEGER,
+                    risk_level VARCHAR(20),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.execute(text("""
+                INSERT INTO predictions
+                (tenure_months, monthly_charges, contract,
+                 churn_probability, churn_prediction, risk_level)
+                VALUES (:tenure, :charges, :contract, :prob, :pred, :risk)
+            """), {
+                'tenure': input_data.get('tenure_months'),
+                'charges': input_data.get('monthly_charges'),
+                'contract': input_data.get('contract'),
+                'prob': churn_probability,
+                'pred': churn_prediction,
+                'risk': risk_level
+            })
+            conn.commit()
+    except Exception as e:
+        print(f"Logging failed: {e}")
     
     
 @app.post('/predict', response_model=PredictionOutput)
@@ -126,10 +165,18 @@ def predict(customer:CustomerInput):
         else:
                 risk = 'Low Risk'
 
+        log_prediction(
+            input_data=data,
+            churn_probability=round(float(proba), 4),
+            churn_prediction=prediction,
+            risk_level=risk
+            )
+
         return PredictionOutput(churn_probability=round(float(proba),4),churn_prediction=prediction, risk_level=risk)
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Prediction failed: {str(e)}"
         )
+
     
